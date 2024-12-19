@@ -1,0 +1,696 @@
+@startuml
+' Global styling
+skinparam packageStyle rectangle
+skinparam linetype ortho
+skinparam class {
+    BackgroundColor LightGrey
+    ArrowColor Black
+    BorderColor Black
+}
+
+' Core Abstractions
+namespace Core {
+    abstract class BaseEntity {
+        +string id
+        +datetime discovery_time
+        +datetime last_heartbeat
+        +string discovery_state
+        +string operational_state
+        +Provider.Service source_service
+    }
+    class xTag {
+        +string id
+        +string name
+        +string description
+    }
+    
+    abstract class EnrichableEntity {
+        +List<Compliance.Finding> associated_compliance_findings
+        +List<Vulnerability.Finding> associated_vulnerability_reports
+        +List<ThreatIntelligence.Enrichment> threat_intelligence_enrichments
+        +List<xTag> x_tags
+        +float aggregate_risk_score
+        +float confidence_level
+        +validateEnrichment()
+        +calculateAggregateRisk()
+    }
+
+    BaseEntity <|-- EnrichableEntity
+}
+
+namespace Provider {
+    
+    interface Service {
+        +string service_name
+        +enum service_functions {create,update,verify,delete,action}
+        +enum load_state {loaded, error, bad_setting, not_found, masked}
+        +enum operational_state {active, reloading, inactive, failed, activating, deactivating} 
+        +enum operational_sub_state {running, degraded, dead, exited, waiting, pre_start, pre_stop, post_start, post_stop, disconnected}
+        +enum configurational_state {enabled, disabled, auto_restart}
+        +datetime last_state_change
+        +string failed_reason
+        +datetime last_heartbeat 
+        +start()
+        +stop()
+        +pause()
+        +refresh()
+    }
+
+    class vAgent {
+        +string service_name "Vicarius Agent"
+        +enum service_type {endpoint,software,x_tags,scripts}
+        +enum service_functions {create,update,delete,action}
+        +scan(profile)
+        +execute(script, context)
+    }
+
+    interface NetworkScanner {
+        +string service_name "Network Scanner"
+        +enum service_type {endpoint,network,x_tags}
+        +enum service_functions {create,update,verify,delete}
+        +scan(profile)
+    }
+
+    class vNMAP_NetworkScanner {
+        +string service_name "Vicarius Network Scanner"
+        +enum service_type {endpoint,network,x_tags}
+        +enum service_functions {create,update,verify,delete}
+        +scan(profile)
+    }
+
+    interface ComplianceScanner {
+        +string service_name "Compliance Scanner"
+        +enum service_type {endpoint,network,x_tags}
+        +enum service_functions {create,update,verify,delete}
+        +scan(profile)
+    }
+
+    class vOutpostAgent {
+        +string service_name "Vicarius Outpost Agent"
+        +enum service_type {endpoint,network,x_tags,asset_discovery,content_enrichment}
+        +enum service_functions {create,update,verify,delete}
+        +discover(context)
+        +List<NentworkScanner> network_scanners
+        +List<ComplianceScanner> compliance_scanners
+        +start(context):job
+        +stop(context):job
+        +pause(context):job
+        +refresh(context):job
+        +status(context,job):status
+        +trigger(script,context):job
+    }
+
+    class ActiveDirectoryConnector{
+        +string service_name "Vicarius Active Directory Connector"
+        +init(config)
+        +start()
+        +stop()
+        +update(config)
+        +action(script,context)     
+    }
+    note right of ActiveDirectoryConnector 
+        1. take AD access info 
+        2. periodically resync with AD
+        3. based on customer defined queries 
+        4. create and update AD specific xTags associations
+    end note 
+
+    class CIS_CAT_PRO_Scanner {
+        +string service_name "Vicarius CIS-CAT Pro by CIS Scanner"
+        +scan(scope, profile, context)
+        +remediate(scope, context)     
+    }
+    
+    Service <|-- vAgent
+    Service <|-- NetworkScanner 
+    ComplianceScanner <|-- CIS_CAT_PRO_Scanner
+    NetworkScanner <|-- vNMAP_NetworkScanner
+    Service <|-- ActiveDirectoryConnector
+    vAgent <|-- vOutpostAgent
+    vOutpostAgent o..> "*" NetworkScanner
+    vOutpostAgent --> ActiveDirectoryConnector
+    vOutpostAgent o..> "*" ComplianceScanner
+    vOutpostAgent --> CIS_CAT_PRO_Scanner   
+    vOutpostAgent --> vNMAP_NetworkScanner   
+}
+
+namespace ActiveDirectory {
+    class ADGroup {
+        +string id
+        +string name
+        +string description
+        +string distinguished_name
+        +enum group_scope {DomainLocal, Global, Universal}
+        +boolean is_security_group
+    }
+    class ADGroupMembership {
+        +ADGroup ad_group
+        +datetime joined_at
+        +datetime last_verified
+    }
+    Core.xTag <|-- ADGroup
+    Core.xTag <|-- ADGroupMembership
+
+}
+Provider.ActiveDirectoryConnector "1" *--> "*" ADGroup 
+Provider.ActiveDirectoryConnector "1" *--> "*" ADGroupMembership
+Provider.ActiveDirectoryConnector "1" *--> "*" Core.EnrichableEntity : enrich User,Endpoint with AD Tags
+
+' System Components
+namespace SystemComponents {
+    class Endpoint {
+        +string hostname
+        +string fqdn
+        +string domain
+        +string workgroup
+        +string os_version
+        +string build_number
+        +datetime first_seen
+        +datetime last_seen
+        +string location
+        +string timezone
+        +boolean is_managed
+    }
+
+    class NetworkInterface {
+        +string interface_name
+        +string description
+        +string type
+        +string mac_address
+        +List<IPAddress> ip_addresses
+        +Map<string,string> x_network_behavior_tags
+        +Map<string,string> x_traffic_analysis_tags
+    }
+
+    class IPAddress {
+        +string address
+        +string type
+        +boolean is_primary
+        +string network_segment
+        +Map<string,string> x_reputation_tags
+        +Map<string,string> x_geolocation_tags
+    }
+
+    class Port {
+        ' number is for things like 80, 443...
+        +string port_number 
+        ' protocol is for things like icmp, udp, tcp 
+        +string protocol
+        ' state is for listen, open, closed, filtering 
+        +boolean state
+        +string network_segment
+        +Map<string,string> x_reputation_tags
+        +Map<string,string> x_network_behavior_tags
+        +Map<string,string> x_traffic_analysis_tags
+        +Map<string,string> x_last_seen_tags
+    }
+
+    Core.EnrichableEntity <|-- Endpoint
+    Core.EnrichableEntity <|-- NetworkInterface
+    Core.EnrichableEntity <|-- IPAddress
+    Core.EnrichableEntity <|-- Port
+}
+
+' Hardware Components
+namespace Hardware {
+    abstract class Hardware {
+        +string manufacturer
+        +string model
+        +string serial_number
+        +datetime manufacture_date
+    }
+
+    class BIOS {
+        +string version
+        +string firmware_type
+        +string boot_mode
+        +boolean secure_boot
+    }
+
+    class CPU {
+        +string architecture
+        +int cores
+        +int threads
+        +string serial_number
+    }
+
+    class Motherboard {
+        +string chipset
+        +string serial_number
+        +List<string> expansion_slots
+        +int memory_slots
+    }
+
+    Core.BaseEntity <|-- Hardware
+    Hardware <-- BIOS
+    Hardware <|-- CPU
+    Hardware <|-- Motherboard
+}
+
+' Software & Process Management
+namespace Software {
+
+    class Software {
+        +string name
+        +string publisher
+        +string version
+        +string digital_signature
+        +string cpe_association 
+        +List<string> supported_os
+        +Map<string,string> x_software_behavior_tags
+    }
+
+    class SoftwarePackage {
+        +string package_name
+        +string package_version
+        +string cpe_association
+        +Map<string,string> softwre_package_categories 
+    }
+
+    class SoftwareGroup {
+        +string group_name
+        +Map<string,string> softwre_group_categories 
+    }
+
+    class DeviceDriver {
+        +string name
+        +string publisher
+        +string version
+        +string digital_signature
+        +string cpe_association 
+        +List<HardWare> associated_hardware
+        +List<string> supported_os
+        +Map<string,string> x_software_behavior_tags
+    }
+
+    class DriverPackage {
+        +string package_name
+        +Map<string,string> softwre_package_categories 
+    }
+
+    
+
+    class OperatingSystem {
+        +string name
+        +string publisher
+        +string version
+        +string digital_signature
+        +string cpe_association 
+        +List<string> supported_os
+        +Map<string,string> x_software_behavior_tags
+    }
+
+    class OperatingSystemFamily {
+        +string os_familiy_name
+        +Map<string,string> os_family_categories
+    }
+
+    class SoftwareInstallation {
+        +string install_path
+        +string config_path
+        +datetime install_date
+        +string install_type
+        +boolean is_active
+        +string parameters
+    }
+
+    class Process {
+        +int pid
+        +int ppid
+        +string name
+        +string cmdline
+        +List<Port> ports
+        +Map<string,string> x_process_behavior_tags
+        +Map<string,string> x_software_behavior_tags
+    }
+
+    class ProcessGroup {
+        +int pgid
+        +int pgpid
+        +string group_name
+        +Map<string,string> group_categories 
+        +List<Process> pid
+        +Map<string,string> x_process_behavior_tags
+        +Map<string,string> x_software_behavior_tags
+    }
+
+    Core.EnrichableEntity <|-- Software
+    Software <|-- OperatingSystem
+    Core.EnrichableEntity <|-- Process
+    Software <|-- DeviceDriver
+}
+
+' User & Access Management
+namespace Identity {
+    class User {
+        +string username
+        +string uid
+        +string description
+        +datetime last_login
+        +Map<string,string> x_behavior_tags
+        +Map<string,string> x_risk_tags
+    }
+
+    class UserGroup {
+        +string name
+        +string gid
+        +List<User> members
+        +boolean is_system_group
+    }
+
+    class UserConfiguration {
+        +string config_type
+        +List<Permission> permissions
+        +boolean sudo_access
+        +datetime last_modified
+    }
+
+    class Permission {
+        +string resource_type
+        +string access_level
+        +boolean is_inherited
+        +datetime grant_date
+    }
+
+    Core.EnrichableEntity <|-- User
+    Core.EnrichableEntity <|-- UserGroup
+}
+
+' Threat Intelligence
+namespace Threat {
+    class Source {
+        +string source_id
+        +string provider
+        +string confidence_level
+        +string update_frequency
+    }
+
+    class Category {
+        +string id
+        +string name
+        +Map<string,string> extended_attributes
+    }
+    class SubCategory {
+        +string id
+        +string name
+        +Map<string,string> extended_attributes
+    }
+
+    class Intel <<xTag>> {
+        +datetime first_report
+        +datetime last_heartbeat
+        +datetime last_update
+        +Category category
+        +SubCategory sub_category
+        +List<string> references
+        +Map<string, string> raw_intel
+        +float confidence_score
+        +string severity_impact
+        +List<Risk.RiskFactor> associated_risk_factors
+        +Map<string,string> x_opencti_tags
+        +Map<string,string> x_misp_tags
+        +float threat_probability
+        +float target_relevance
+    }
+    class EndpointIntel {
+        +string ip_risk_score
+        +string domain_risk_score
+        +List<string> malware_mentions
+        +List<string> c2_associations
+        +List<string> threat_actor_mentions
+        +List<string> vulnerability_references
+        +Map<string, datetime> first_seen_dates
+        +Map<string, datetime> last_seen_dates
+        +List<string> associated_campaigns
+        +Map<string, string> geolocation_risk
+        +calculateEndpointRisk()
+    }
+    class UserIntel {
+        +List<string> credential_exposures
+        +List<string> dark_web_mentions
+        +List<string> phishing_targets
+        +Map<string, datetime> exposure_dates
+        +boolean privileged_credential_exposed
+        +List<string> exposed_service_types
+        +float social_media_risk_score
+        +List<string> suspicious_access_patterns
+        +calculateUserRisk()
+    }
+    class VulnerabilityIntel {
+        +float exploit_likelihood
+        +boolean exploit_available
+        +boolean actively_exploited
+        +List<string> exploit_sources
+        +List<string> affected_products
+        +List<string> mitigation_status
+        +Map<string, string> patch_availability
+        +List<string> threat_actor_usage
+        +float temporal_score
+        +calculateVulnerabilityRisk()
+    }
+
+    Core.xTag <|-- Threat.Intel
+    Threat.Intel <|-- EndpointIntel
+    Threat.Intel <|-- UserIntel
+    Threat.Intel <|-- VulnerabilityIntel
+    Threat.Intel --> Threat.SubCategory
+    Threat.SubCategory --> Threat.Category
+    Threat.Intel <--* Threat.Source
+    Threat.Source *--> Threat.Category 
+    
+}
+
+' Vulnerability Management
+namespace Vulnerability {
+    class Finding {
+        +string signature
+        +List<string> cve_cpe_mappings
+        +List<Threat.Intel> threat_intel
+        +List<Risk.RiskFactor> associated_risk_factors
+        +datetime reported_time
+        +enum detection_status
+        +enum validation_status
+        +enum remediation_status
+        +string severity
+        +float exploit_likelihood
+        +float impact_score
+        +float exposure_window
+    }
+
+    class Metadata {
+        +string cve_id
+        +List<Risk.RiskFactor> associated_risk_factors
+        +string description
+        +datetime publish_date
+        +List<strings> kb_links
+        +List<string> attack_vectors
+    }
+
+    Core.EnrichableEntity <|-- Finding
+}
+
+namespace Compliance {
+    class Benchmark {
+        +string benchmark_id
+        +string name
+        +string version
+        +string description
+        +enum framework {CIS, HIPAA, PCI-DSS, ...}
+        +datetime publish_date
+        +string applicable_to (e.g., endpoints, software, users)
+    }
+
+
+    class Profile {
+        +string id
+        +string name
+        +string description
+        +enum severity {info, low, medium, high}
+        +float impact_score
+        +List<string> references 'references to standards, guidelines, or CVEs (e.g., "CIS Control 1.1.1")
+        +List<Rule> included_rules
+        +boolean is_mandatory
+        +string assessment_criteria
+        +string applicable_to
+    }
+
+    class Category {
+        +string id
+        +string name
+        +string description
+    }
+
+    class SubCategory {
+        +string id
+        +string name
+        +string description
+    }
+
+    class Test {
+        +string id
+        +string type {file, registry, service, configuration, process}
+        +string description
+        +enum evaluation_operator {EQUALS, GREATER_THAN, LESS_THAN}
+        +string expected_value
+        +string actual_value
+    }
+
+
+
+    class Rule {
+        +string id
+        +string name
+        +string description
+        +enum severity {LOW, MEDIUM, HIGH, CRITICAL}
+        +List<Test> tests
+        +List<string> references
+        +string remediation
+    }
+
+
+    class Finding {
+        +string finding_id
+        +List<Risk.RiskFactor> associated_risk_factors
+        +Control control_id
+        +enum compliance_status {fail,pass,error}
+        +string severity
+        +List<BaseEntity> affected_resources
+        +string evidence
+        +List<RemediationAction> remediation_options
+        +enum validation_status 
+        +datetime last_detected
+    }
+
+    class RemediationAction {
+        +string compliance_remediation_action_id
+        +Control control_id
+        +enum remediation_status
+        +List<BaseEntity> affected_resources
+        +List<datetime,Map<resource,result>> history
+        +string evidence
+        +string remediation_suggestion
+        +datetime last_executed
+    }
+
+}
+
+
+
+' Risk Assessment
+namespace Risk {
+
+    class RiskFactor {
+        +string id
+        +string name
+        +string description
+        +enum impact_category {Security, Compliance, Operational}
+        +float base_risk_score
+        +RiskCondition condition
+        +float calculateRisk()
+    }
+
+    class RiskCondition {
+        +string id
+        +string type {AttributeMatch, TagMatch, ConfigurationCheck}
+        +string match_expression
+        +boolean evaluate(Entity entity)
+    }
+
+    class RiskAggregationMethod {
+        +string id
+        +string name {SUM, AVERAGE, MAX, FUNCTION}
+        +description
+    }
+
+    class RiskScore {
+        +string id
+        +float total_score
+        +RiskAggregationMethod aggregation_method
+        +datetime calculated_at
+    }
+
+
+    class RiskAssessment {
+        +float inherent_risk_score
+        +float residual_risk_score
+        +string risk_level
+        +Map<string,float> control_effectiveness
+        +calculateResidualRisk()
+    }
+
+    
+    class RemediationControl {
+        +string control_id
+        +string status
+        +float effectiveness_score
+        +float implementation_cost
+        +evaluateEffectiveness()
+    }
+
+    class BusinessImpact {
+        +float financial_impact
+        +float reputation_impact
+        +float operational_impact
+        +float regulatory_impact
+        +calculateTotalImpact()
+    }
+
+    Core.BaseEntity <|-- RiskAssessment
+    Core.BaseEntity <|-- RiskFactor
+}
+
+' Key Cross-Module Relationships
+Provider.Service *--> Core.BaseEntity : assets_discovered
+Provider.vAgent "1" *--> "*" Core.EnrichableEntity : vulnerabilities_detected
+Provider.vNMAP_NetworkScanner "1" *--> "*" Core.EnrichableEntity : vulnerabilities_detected
+Provider.CIS_CAT_PRO_Scanner "1" *--> "*" Core.EnrichableEntity : compliance_findings
+SystemComponents.Endpoint "*" *-- "1..*" Hardware.Motherboard : contains
+SystemComponents.Endpoint "*" -- "1..*" SystemComponents.NetworkInterface : has
+SystemComponents.NetworkInterface "*" *-- "1..*" SystemComponents.IPAddress : has
+SystemComponents.Endpoint "*" *-- "*" Software.Software : has
+SystemComponents.Endpoint "*" *-- "*" Software.Process : has
+SystemComponents.Endpoint "*" *-- "*" Hardware.Motherboard : has
+Hardware.Motherboard "1" *-- "1" Hardware.BIOS : has
+Hardware.Motherboard "1" *-- "1..*" Hardware.CPU : has
+Software.Process "*" *-- "1..*" SystemComponents.Port : has
+Software.Process "*" *-- "1..*" Identity.User : has
+Software.Process "*" *-- "1..*" Identity.UserGroup : has
+SystemComponents.Endpoint "*" *-- "1..*" SystemComponents.IPAddress : has
+SystemComponents.IPAddress "*" *-- "1..*" SystemComponents.Port : has
+SystemComponents.Endpoint "*" *-- "1..*" Identity.User : contains
+SystemComponents.Endpoint "*" *-- "1..*" Identity.UserGroup : contains
+Hardware.Motherboard "1" -- "1..*" Hardware.CPU : houses
+Software.Software "1" -- "0..*" Software.SoftwareInstallation : installed as
+Software.Software "1" -- "0..*" Software.SoftwareGroup : association
+Software.Software "1" -- "0..*" Software.SoftwarePackage : contained
+Software.DeviceDriver "1" *-- "0..*" Hardware.Hardware : controls
+Software.DeviceDriver "1" -- "0..*" Software.DriverPackage : contained
+Software.SoftwareInstallation "1" -- "0..*" Software.Process : runs as
+Software.Process "1" *-- "1..*" Software.ProcessGroup: runs in
+Software.OperatingSystem "1" o-- "*" Software.OperatingSystemFamily
+Identity.User "1" -- "1..*" Identity.UserConfiguration : has
+Identity.UserGroup "1" *-- "1..*" Identity.UserConfiguration : has
+Identity.User "*" *-- "1..*" Identity.UserGroup : has
+Identity.UserConfiguration "1" --* "1..*" Identity.Permission : has
+Software.SoftwareInstallation "1" --* "0..*" Vulnerability.Finding : affects
+Software.OperatingSystem "1" --* "0..*" Vulnerability.Finding : affects
+SystemComponents.Endpoint "1" --* "0..*" Vulnerability.Finding : affects
+SystemComponents.Port "1" --* "0..*" Vulnerability.Finding : affects
+Vulnerability.Finding "1" --* "1..*" Vulnerability.Metadata : relates
+'Risk.RiskAssessment "1" -- "1..*" Risk.RiskFactor : composed of
+
+Compliance.Finding "*" *-- "1..*" SystemComponents.Endpoint : impacts
+Compliance.Finding "*" *-- "1..*" Software.Software : affects
+Compliance.Finding "*" *-- "1..*" Software.Process : involves
+Compliance.Finding "*" *-- "1..*" Identity.User : associated with
+
+
+Compliance.Finding "*" *--> "0..*" Compliance.RemediationAction : possible remediation actions
+Compliance.Benchmark "1" *-- "1..*" Compliance.Profile : includes
+Compliance.Profile "1" -- "1..*" Compliance.Category : includes
+Compliance.Category "1" -- "1..*" Compliance.SubCategory : relates to 
+Compliance.SubCategory "1" -- "1..*" Compliance.Rule : belongs to
+Compliance.Rule "1..*" *-- "1..*" Compliance.Test : evaluated by
+Compliance.Rule "1..*" <-- "0..*"  Compliance.Finding : derived from
+Compliance.Finding "*" o--> "*" Compliance.Test : generated from
+@enduml

@@ -1,0 +1,143 @@
+@startuml
+!include <archimate/Archimate>
+skinparam rectangle<<behavior>> {
+	roundCorner 25
+}
+
+sprite $bProcess jar:archimate/business-process
+sprite $aService jar:archimate/application-service
+sprite $aComponent jar:archimate/application-component
+sprite $aFunction jar:archimate/application-function
+sprite $aIntegration jar:archimate/technology-function
+sprite $aSDK jar:archimate/technology-path
+
+rectangle "Service Capabilities" as SC {
+   rectangle "Discovery"  as Discovery <<$bProcess>><<behavior>> #Business
+   rectangle "Inventory"  as Inventory <<$bProcess>><<behavior>> #Business
+   rectangle "Configuration Management"  as ConfigMgmt <<$bProcess>><<behavior>> #Business
+   rectangle "Risk Assessment"  as RskAss <<$bProcess>><<behavior>> #Business
+   rectangle "Security Operations"  as SecOps <<$bProcess>><<behavior>> #Business
+   rectangle "Proving Value"  as ProvVal <<$bProcess>><<behavior>> #Business
+}
+
+rectangle "Core Platform Capabilities" as CPC {
+   rectangle "API"  as API <<$aFunction>><<behavior>> #Application
+   rectangle "Data Processing"  as DPR <<$aFunction>><<behavior>> #Application
+   rectangle "Common Information Model (CIM)"  as CIM <<$aFunction>><<behavior>> #Application
+   rectangle "CIM Tagging"  as TAG <<$aFunction>><<behavior>> #Application
+   rectangle "Dashboard"  as DSB <<$aFunction>><<behavior>> #Application
+   rectangle "Audit Notifications"  as ADT <<$aFunction>><<behavior>> #Application
+   rectangle "Config"  as CFG <<$aFunction>><<behavior>> #Application
+   rectangle "Scripts"  as SCR <<$aFunction>><<behavior>> #Application
+   rectangle "Integrations"  as INT <<$aFunction>><<behavior>> #Application
+   rectangle "Reports"  as RPT <<$aFunction>><<behavior>> #Application
+}
+
+rectangle "Posture (live)" as PST {
+   rectangle "Asset Inventory"  as ASTI <<$aComponent>><<behavior>> #Application
+   rectangle "Software Inventory"  as SFTI <<$aComponent>><<behavior>> #Application
+   rectangle "Asset Groups"  as ASTG <<$aComponent>><<behavior>> #Application
+   rectangle "Software Groups"  as SFTG <<$aComponent>><<behavior>> #Application
+   rectangle "Vulnerability Detections"  as VLDT <<$aComponent>><<behavior>> #Application
+   rectangle "Compliance Detections"  as CTDT <<$aComponent>><<behavior>> #Application
+   rectangle "xTags"  as xTGS <<$aComponent>><<behavior>> #Application
+   rectangle "Raw Risk Scoring"  as xRSK <<$aService>><<behavior>> #Business
+   rectangle "Software Discovery SDK"  as aSoftwareSDK <<$aSDK>><<behavior>> #Business
+   rectangle "Asset Discovery SDK"  as aAssetSDK <<$aSDK>><<behavior>> #Business
+   rectangle "Compliance Scanner SDK"  as aComplianceScannerSDK <<$aSDK>><<behavior>> #Business
+   rectangle "Vulnerability Scanner SDK"  as aVulnerabilityScannerSDK <<$aSDK>><<behavior>> #Business
+}
+
+rectangle "vKnowledge Base " as vKB {
+   rectangle "CPE Mapping Library"  as xCPE <<$aService>><<behavior>> #Business
+   rectangle "CVE-CPE Mapping"  as xCVE <<$aService>><<behavior>> #Business
+   rectangle "Scripting Library"  as xSRPTL <<$aService>><<behavior>> #Business
+   rectangle "Script-CPE Mapping"  as xS2CPE <<$aService>><<behavior>> #Business
+   rectangle "CPE-CVE-Scripts Mapping"  as xS2CV2PE <<$aService>><<behavior>> #Business
+   rectangle "CPE-CIS-Scripts Mapping"  as xS2CI2PE <<$aService>><<behavior>> #Business
+}
+
+rectangle "Change Management" as CHM {
+   rectangle "Change Tracking Log" as xCNG <<$aComponent>><<behavior>> #Application
+   rectangle "Findings Response Governance/Tracker" as FRDG <<$aComponent>><<behavior>> #Application
+   rectangle "Residual Risk Scoring"  as rRSK <<$aService>><<behavior>> #Business
+}
+
+rectangle "Vicarious Discovery" as VDSC {
+    rectangle "Agent"  as aAgent <<$aComponent>><<behavior>> #Application
+    rectangle "Site Outpost"  as aOutpost <<$aComponent>><<behavior>> #Application
+    rectangle "Network Scanner"  as aVNS <<$aComponent>><<behavior>> #Application
+    rectangle "CIS Benchmark Scanner"  as aCisScanner <<$aComponent>><<behavior>> #Application
+}
+
+xCVE -u->  xCPE 
+xS2CPE -u->  xCPE
+xS2CPE *-u->  xSRPTL 
+xS2CV2PE *-u-> xS2CPE
+xS2CV2PE -u-> xCVE
+xS2CI2PE *-u-> xS2CPE
+xCVE *-u-> xSRPTL
+
+aAssetSDK -d-> ASTI
+aSoftwareSDK -d-> SFTI
+aComplianceScannerSDK -d-> CTDT
+aVulnerabilityScannerSDK -d-> VLDT
+aAgent -d-> aAssetSDK
+aAgent -d-> aSoftwareSDK
+aAgent -d-> aVulnerabilityScannerSDK
+aVNS -d-> aAssetSDK
+aOutpost -d-> aAgent
+aOutpost --|> aAgent
+aOutpost -d-> aVNS
+aCisScanner -d-|> aVNS
+aOutpost -d-> aCisScanner
+
+SFTI -u-.> xCPE
+ASTI -u-.> xCPE
+VLDT -u-.> xCVE
+SFTI -l-> ASTI
+FRDG -u-> VLDT
+FRDG -u-> CTDT
+rRSK -l-> FRDG
+SFTG -u-> SFTI
+ASTG -u-> ASTI
+VLDT -u-> ASTI 
+VLDT -u-> SFTI
+CTDT -u-> ASTI 
+CTDT -u-> SFTI
+xTGS -u-> VLDT 
+xTGS -u-> CTDT
+xTGS -u-> SFTG 
+xTGS -u-> ASTG
+xRSK -l-> xTGS
+xRSK -u-.> VLDT
+xRSK -u-.> CTDT
+rRSK -u-> xRSK
+FRDG -l-> xCNG
+xCNG -u-.> VLDT
+xCNG -u-.> CTDT
+xCNG -u-.> ASTI
+xCNG -u-.> SFTI
+FRDG -u-.> xS2CV2PE
+FRDG -u-.> xS2CI2PE
+FRDG -u-------.> xSRPTL
+
+
+Discovery -r-> Inventory
+Inventory -r-> ConfigMgmt
+ConfigMgmt -r-> RskAss
+RskAss -r-> SecOps
+SecOps -r-> ProvVal
+
+API -r-> DPR
+DPR --> CIM
+DSB ---> API
+RPT ---> API
+INT ---> API
+DPR ---> ADT
+DPR ---> TAG
+CIM <--- TAG
+DPR ---> SCR
+CFG -d-> DPR
+
+@enduml
