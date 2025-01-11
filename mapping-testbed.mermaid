@@ -1,0 +1,83 @@
+erDiagram
+    CPE_ENTRY ||--o{ MAPPING : participates_in
+    APPLICATION_VERSION ||--o{ MAPPING : participates_in
+    OS_VERSION ||--o{ MAPPING : participates_in
+    MAPPING ||--o{ EVIDENCE : has_evidence
+    AGENT_INVENTORY ||--o{ MAPPING : found_at
+    
+    CPE_ENTRY {
+        string cpe_id PK
+        string vendor
+        string product
+        string version
+        string update_version
+        string source
+        decimal confidence_score "0.0-1.0"
+        timestamp snapshot_time
+        string snapshot_name
+    }
+    
+    APPLICATION_VERSION {
+        int app_id PK
+        string app_name
+        string vendor
+        string version
+        string package_name
+        string signer
+        string package_url 
+        string hash
+        boolean is_active
+        decimal confidence_score "0.0-1.0"
+        timestamp snapshot_time
+        string snapshot_name
+    }
+    
+    OS_VERSION {
+        int os_id PK
+        string os_name
+        string os_version
+        string os_arch "enum[i386, x86_64, arm, arm64]"
+        string package_manager "enum[msi,apt,yum,brew,dotnet,chocolatey]"
+        string uninstall_cmd_template
+        boolean is_active
+        timestamp snapshot_time
+        string snapshot_name
+    }
+
+    AGENT_INVENTORY {
+        int asset_id PK
+        string customer_id
+        string customer_name
+        string region
+        string team
+        string agent_uuid
+        string agent_version
+        timestamp first_seen
+        timestamp last_seen
+        boolean is_active
+    }
+    
+    MAPPING {
+        int mapping_id PK
+        string cpe_id FK
+        int app_id FK
+        int os_id FK
+        int asset_id FK
+        string actual_package_name
+        string uninstall_command
+        boolean is_projected
+        decimal confidence_score "0.0-1.0"
+        index idx_triad "cpe_id,app_id,os_id"
+        timestamp snapshot_time
+        string snapshot_name
+    }
+    
+    EVIDENCE {
+        int evidence_id PK
+        int mapping_id FK
+        string evidence_type "enum[registry_key,url,hash,path, signature, filename, package_name, configuration_data]"
+        string evidence_source "enum[NVD,IVANTI,VulnCheck, NMAP, CUSTOMER_DATA,INFERENCE]"
+        string evidence_value
+        decimal confidence_score "0.0-1.0"
+        timestamp snapshot_time
+    }
